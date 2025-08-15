@@ -1,157 +1,305 @@
 import pygame
 import random
+import cv2
 
 # Initialize Pygame
 pygame.init()
 
-# Screen settings (17:6 aspect ratio: 1050x720)
+# Screen settings
 WIDTH, HEIGHT = 1050, 720
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Aircraft vs Asteroids")
 
 # Colors
 WHITE = (255, 255, 255)
+ORANGE = (255, 69, 0)
+GRAY = (169, 169, 169)
 
-# Load images (replace with correct file paths)
-aircraft_image = pygame.image.load("g2.png")  # Aircraft image
+# Load images
+aircraft_image = pygame.image.load("g2.png")
 aircraft_image = pygame.transform.scale(aircraft_image, (100, 100))
-missile_image = pygame.image.load("q.png")  # Missile image
-missile_image = pygame.transform.scale(missile_image, (10, 30))
-asteroid_image = pygame.image.load("d.png")  # Asteroid image
+aircraft_rect = aircraft_image.get_rect()
+
+missile_image = pygame.image.load("q.png")
+missile_image = pygame.transform.scale(missile_image, (70, 50))
+
+asteroid_image = pygame.image.load("d.png")
 asteroid_image = pygame.transform.scale(asteroid_image, (80, 80))
-explosion_image = pygame.image.load("i.png")  # Explosion image
-explosion_image = pygame.transform.scale(explosion_image, (80, 80))
+
+explosion_image = pygame.image.load("i.png")
+explosion_image = pygame.transform.scale(explosion_image, (200, 200))
+
+# Load video using OpenCV
+video_path = "v.mp4"
+cap = cv2.VideoCapture(video_path)
+
+if not cap.isOpened():
+    print("Error: Unable to open video.")
+    pygame.quit()
+    exit()
 
 # Game variables
-aircraft_pos = pygame.Vector2(WIDTH // 2, HEIGHT - 60)
+aircraft_pos_x = WIDTH // 2
+aircraft_pos_y = HEIGHT - 60
 missiles = []
 asteroids = []
 explosions = []
 score = 0
-background_y = 0
+hits = 0  # Track asteroid hits on the cockpit
 running = True
+paused = False  # Pause state
 clock = pygame.time.Clock()
 
-# Speeds
-AIRCRAFT_SPEED = 10
-ASTEROID_SPEED = 5
-MISSILE_SPEED = 10
-BACKGROUND_SCROLL_SPEED = 2
+# Buttons
+pause_button = pygame.Rect(WIDTH - 110, 10, 100, 40)
+resume_button = pygame.Rect(WIDTH // 2 - 100, HEIGHT // 2, 200, 50)  # Resume button for paused state
+font = pygame.font.Font(None, 36)
 
-# Define classes for game entities
+# Movement speeds
+AIRCRAFT_SPEED = 20
+ASTEROID_SPEED = 5
+missile_fired = 0
+
+# Classes for game objects
 class Missile:
     def __init__(self, x, y):
-        self.rect = pygame.Rect(x, y, 10, 30)
-        self.image = missile_image
+        self.x = x
+        self.y = y
 
     def move(self):
-        self.rect.y -= MISSILE_SPEED
+        self.y -= 5
 
-    def draw(self):
-        screen.blit(self.image, self.rect)
 
 class Asteroid:
     def __init__(self):
-        self.rect = pygame.Rect(random.randint(0, WIDTH - 80), -80, 80, 80)
-        self.image = asteroid_image
+        self.x = random.randint(0, WIDTH - 40)
+        self.y = 0
 
     def move(self):
-        self.rect.y += ASTEROID_SPEED
+        self.y += ASTEROID_SPEED
 
-    def draw(self):
-        screen.blit(self.image, self.rect)
 
 class Explosion:
     def __init__(self, x, y):
-        self.image = explosion_image
-        self.rect = self.image.get_rect(center=(x, y))
-        self.timer = 15  # Frames to display explosion
+        self.x = x
+        self.y = y
+        self.timer = 15
 
     def update(self):
         self.timer -= 1
 
-    def draw(self):
-        if self.timer > 0:
-            screen.blit(self.image, self.rect)
 
-# Game loop
-while running:
-    screen.fill((0, 0, 0))  # Black background
+# Entrance screen
+def entrance_screen():
+    global running
+    entrance_running = True
+    font = pygame.font.Font(None, 74)
+    small_font = pygame.font.Font(None, 36)
 
-    # Scroll background
-    background_y += BACKGROUND_SCROLL_SPEED
-    if background_y >= HEIGHT:
-        background_y = 0
-    screen.blit(aircraft_image, (0, background_y - HEIGHT))
-    screen.blit(aircraft_image, (0, background_y))
+    while entrance_running:
+        screen.fill((0, 0, 0))
+        title_text = font.render("Aircraft vs Asteroids", True, WHITE)
+        screen.blit(title_text, (WIDTH // 2 - title_text.get_width() // 2, HEIGHT // 4))
 
-    # Event handling
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
+        # Start button
+        start_button = pygame.Rect(WIDTH // 3, HEIGHT // 2, 200, 50)
+        pygame.draw.rect(screen, ORANGE, start_button)
+        start_text = small_font.render("Start", True, WHITE)
+        screen.blit(start_text, (WIDTH // 3 + 70, HEIGHT // 2 + 10))
 
-    # Aircraft movement
-    keys = pygame.key.get_pressed()
-    if keys[pygame.K_LEFT] and aircraft_pos.x > 0:
-        aircraft_pos.x -= AIRCRAFT_SPEED
-    if keys[pygame.K_RIGHT] and aircraft_pos.x < WIDTH - 100:
-        aircraft_pos.x += AIRCRAFT_SPEED
-    if keys[pygame.K_UP] and aircraft_pos.y > 0:
-        aircraft_pos.y -= AIRCRAFT_SPEED
-    if keys[pygame.K_DOWN] and aircraft_pos.y < HEIGHT - 100:
-        aircraft_pos.y += AIRCRAFT_SPEED
+        # Exit button
+        exit_button = pygame.Rect(WIDTH // 3, HEIGHT // 2 + 60, 200, 50)
+        pygame.draw.rect(screen, GRAY, exit_button)
+        exit_text = small_font.render("Exit", True, WHITE)
+        screen.blit(exit_text, (WIDTH // 3 + 70, HEIGHT // 2 + 70))
 
-    # Fire missile
-    if keys[pygame.K_SPACE]:
-        missiles.append(Missile(aircraft_pos.x + 45, aircraft_pos.y))
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                entrance_running = False
+                running = False
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                if start_button.collidepoint(event.pos):
+                    entrance_running = False
+                if exit_button.collidepoint(event.pos):
+                    entrance_running = False
+                    running = False
 
-    # Update and draw missiles
-    for missile in missiles[:]:
-        missile.move()
-        missile.draw()
-        if missile.rect.y < -30:
-            missiles.remove(missile)
+        pygame.display.flip()
+        clock.tick(30)
 
-    # Spawn asteroids
-    if random.random() < 0.02:
-        asteroids.append(Asteroid())
 
-    # Update and draw asteroids
-    for asteroid in asteroids[:]:
-        asteroid.move()
-        asteroid.draw()
-        if asteroid.rect.y > HEIGHT:
-            asteroids.remove(asteroid)
-            running = False
+entrance_screen()
 
-    # Collision detection
-    for missile in missiles[:]:
-        for asteroid in asteroids[:]:
-            if missile.rect.colliderect(asteroid.rect):
-                explosions.append(Explosion(asteroid.rect.centerx, asteroid.rect.centery))
-                missiles.remove(missile)
-                asteroids.remove(asteroid)
-                score += 1
-                break
+# Game Over screen
+def game_over_screen():
+    font = pygame.font.Font(None, 74)
+    small_font = pygame.font.Font(None, 36)
+    
+    while True:
+        screen.fill((0, 0, 0))
+        
+        # Display the final score
+        score_text = font.render(f"Final Score: {score}", True, WHITE)
+        screen.blit(score_text, (WIDTH // 2 - score_text.get_width() // 2, HEIGHT // 3))
 
-    # Update and draw explosions
-    for explosion in explosions[:]:
-        explosion.update()
-        if explosion.timer <= 0:
-            explosions.remove(explosion)
-        explosion.draw()
+        # Restart button
+        restart_button = pygame.Rect(WIDTH // 3, HEIGHT // 2, 200, 50)
+        pygame.draw.rect(screen, ORANGE, restart_button)
+        restart_text = small_font.render("Restart", True, WHITE)
+        screen.blit(restart_text, (WIDTH // 3 + 70, HEIGHT // 2 + 10))
 
-    # Draw aircraft
-    screen.blit(aircraft_image, aircraft_pos)
+        # Exit button
+        exit_button = pygame.Rect(WIDTH // 3, HEIGHT // 2 + 60, 200, 50)
+        pygame.draw.rect(screen, GRAY, exit_button)
+        exit_text = small_font.render("Exit", True, WHITE)
+        screen.blit(exit_text, (WIDTH // 3 + 70, HEIGHT // 2 + 70))
 
-    # Display score
-    font = pygame.font.Font(None, 36)
-    score_text = font.render(f"Score: {score}", True, WHITE)
-    screen.blit(score_text, (10, 10))
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                exit()
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                if restart_button.collidepoint(event.pos):
+                    main_game_loop()  # Restart the game
+                if exit_button.collidepoint(event.pos):
+                    pygame.quit()
+                    exit()
 
-    pygame.display.flip()
-    clock.tick(30)  # 30 FPS
+        pygame.display.flip()
+        clock.tick(30)
 
-# End game
-pygame.quit()
-print(f"Game Over! Your score: {score}")
+# Main game loop
+def main_game_loop():
+    global score, hits, running, paused, missiles, asteroids, explosions, missile_fired
+
+    # Reset game variables
+    score = 0
+    hits = 0
+    missiles = []
+    asteroids = []
+    explosions = []
+    missile_fired = 0
+    aircraft_pos_x = WIDTH // 2
+    aircraft_pos_y = HEIGHT - 60
+
+    while running:
+        if not paused:
+            # Read a frame from the video
+            ret, frame = cap.read()
+            if not ret:
+                cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                ret, frame = cap.read()
+
+            frame = cv2.resize(frame, (WIDTH, HEIGHT))
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            frame_surface = pygame.surfarray.make_surface(frame.swapaxes(0, 1))
+            screen.blit(frame_surface, (0, 0))
+
+            # Event handling
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    if pause_button.collidepoint(event.pos):
+                        paused = True
+
+            # Aircraft movement
+            keys = pygame.key.get_pressed()
+            if keys[pygame.K_LEFT] and aircraft_pos_x > 0:
+                aircraft_pos_x -= AIRCRAFT_SPEED
+            if keys[pygame.K_RIGHT] and aircraft_pos_x < WIDTH - aircraft_rect.width:
+                aircraft_pos_x += AIRCRAFT_SPEED
+            if keys[pygame.K_UP] and aircraft_pos_y > 0:
+                aircraft_pos_y -= AIRCRAFT_SPEED
+            if keys[pygame.K_DOWN] and aircraft_pos_y < HEIGHT - aircraft_rect.height:
+                aircraft_pos_y += AIRCRAFT_SPEED
+
+            # Fire missiles
+            if keys[pygame.K_SPACE] and missile_fired < 3:
+                missiles.append(Missile(aircraft_pos_x + 25, aircraft_pos_y))
+                missile_fired += 1
+
+            if not keys[pygame.K_SPACE]:
+                missile_fired = 0
+
+            # Update missiles
+            for missile in missiles[:]:
+                missile.move()
+                if missile.y < 0:
+                    missiles.remove(missile)
+
+            # Spawn and update asteroids
+            if random.random() < 0.02:
+                asteroids.append(Asteroid())
+
+            for asteroid in asteroids[:]:
+                asteroid.move()
+                if asteroid.y > HEIGHT:
+                    asteroids.remove(asteroid)
+                    hits += 1  # Increment hits
+                    if hits >= 3:
+                        running = False
+
+            # Check for collisions and explosions
+            for missile in missiles[:]:
+                for asteroid in asteroids[:]:
+                    if pygame.Rect(missile.x, missile.y, 5, 15).colliderect(pygame.Rect(asteroid.x, asteroid.y, 40, 40)):
+                        missiles.remove(missile)
+                        asteroids.remove(asteroid)
+                        explosions.append(Explosion(asteroid.x, asteroid.y))
+                        score += 1
+                        break
+
+            for explosion in explosions[:]:
+                explosion.update()
+                if explosion.timer <= 0:
+                    explosions.remove(explosion)
+                else:
+                    screen.blit(explosion_image, (explosion.x - 15, explosion.y - 15))
+
+            # Draw aircraft
+            aircraft_rect.x = aircraft_pos_x
+            aircraft_rect.y = aircraft_pos_y
+            screen.blit(aircraft_image, aircraft_rect)
+
+            # Draw missiles and asteroids
+            for missile in missiles:
+                screen.blit(missile_image, (missile.x, missile.y))
+
+            for asteroid in asteroids:
+                screen.blit(asteroid_image, (asteroid.x, asteroid.y))
+
+        else:
+            # Draw pause screen with resume button
+            overlay = pygame.Surface((WIDTH, HEIGHT))
+            overlay.set_alpha(128)
+            overlay.fill((0, 0, 0))
+            screen.blit(overlay, (0, 0))
+            resume_text = font.render("Resume", True, WHITE)
+            pygame.draw.rect(screen, ORANGE, resume_button)
+            screen.blit(resume_text, (resume_button.x + 50, resume_button.y + 10))
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    if resume_button.collidepoint(event.pos):
+                        paused = False
+
+        # Pause button
+        pygame.draw.rect(screen, ORANGE, pause_button)
+        pause_button_text = font.render("Pause", True, WHITE)
+        screen.blit(pause_button_text, (pause_button.x + 15, pause_button.y + 10))
+
+        # Display score
+        score_text = font.render(f"Score: {score}  Hits: {hits}", True, WHITE)
+        screen.blit(score_text, (10, 10))
+
+        pygame.display.flip()
+        clock.tick(30)
+
+    cap.release()
+    game_over_screen()
+
+# Start the game
+main_game_loop()

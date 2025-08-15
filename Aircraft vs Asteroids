@@ -1,0 +1,157 @@
+import pygame
+import random
+
+# Initialize Pygame
+pygame.init()
+
+# Screen settings (17:6 aspect ratio: 1050x720)
+WIDTH, HEIGHT = 1050, 720
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Aircraft vs Asteroids")
+
+# Colors
+WHITE = (255, 255, 255)
+
+# Load images (replace with correct file paths)
+aircraft_image = pygame.image.load("g2.png")  # Aircraft image
+aircraft_image = pygame.transform.scale(aircraft_image, (100, 100))
+missile_image = pygame.image.load("q.png")  # Missile image
+missile_image = pygame.transform.scale(missile_image, (10, 30))
+asteroid_image = pygame.image.load("d.png")  # Asteroid image
+asteroid_image = pygame.transform.scale(asteroid_image, (80, 80))
+explosion_image = pygame.image.load("i.png")  # Explosion image
+explosion_image = pygame.transform.scale(explosion_image, (80, 80))
+
+# Game variables
+aircraft_pos = pygame.Vector2(WIDTH // 2, HEIGHT - 60)
+missiles = []
+asteroids = []
+explosions = []
+score = 0
+background_y = 0
+running = True
+clock = pygame.time.Clock()
+
+# Speeds
+AIRCRAFT_SPEED = 10
+ASTEROID_SPEED = 5
+MISSILE_SPEED = 10
+BACKGROUND_SCROLL_SPEED = 2
+
+# Define classes for game entities
+class Missile:
+    def __init__(self, x, y):
+        self.rect = pygame.Rect(x, y, 10, 30)
+        self.image = missile_image
+
+    def move(self):
+        self.rect.y -= MISSILE_SPEED
+
+    def draw(self):
+        screen.blit(self.image, self.rect)
+
+class Asteroid:
+    def __init__(self):
+        self.rect = pygame.Rect(random.randint(0, WIDTH - 80), -80, 80, 80)
+        self.image = asteroid_image
+
+    def move(self):
+        self.rect.y += ASTEROID_SPEED
+
+    def draw(self):
+        screen.blit(self.image, self.rect)
+
+class Explosion:
+    def __init__(self, x, y):
+        self.image = explosion_image
+        self.rect = self.image.get_rect(center=(x, y))
+        self.timer = 15  # Frames to display explosion
+
+    def update(self):
+        self.timer -= 1
+
+    def draw(self):
+        if self.timer > 0:
+            screen.blit(self.image, self.rect)
+
+# Game loop
+while running:
+    screen.fill((0, 0, 0))  # Black background
+
+    # Scroll background
+    background_y += BACKGROUND_SCROLL_SPEED
+    if background_y >= HEIGHT:
+        background_y = 0
+    screen.blit(aircraft_image, (0, background_y - HEIGHT))
+    screen.blit(aircraft_image, (0, background_y))
+
+    # Event handling
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+
+    # Aircraft movement
+    keys = pygame.key.get_pressed()
+    if keys[pygame.K_LEFT] and aircraft_pos.x > 0:
+        aircraft_pos.x -= AIRCRAFT_SPEED
+    if keys[pygame.K_RIGHT] and aircraft_pos.x < WIDTH - 100:
+        aircraft_pos.x += AIRCRAFT_SPEED
+    if keys[pygame.K_UP] and aircraft_pos.y > 0:
+        aircraft_pos.y -= AIRCRAFT_SPEED
+    if keys[pygame.K_DOWN] and aircraft_pos.y < HEIGHT - 100:
+        aircraft_pos.y += AIRCRAFT_SPEED
+
+    # Fire missile
+    if keys[pygame.K_SPACE]:
+        missiles.append(Missile(aircraft_pos.x + 45, aircraft_pos.y))
+
+    # Update and draw missiles
+    for missile in missiles[:]:
+        missile.move()
+        missile.draw()
+        if missile.rect.y < -30:
+            missiles.remove(missile)
+
+    # Spawn asteroids
+    if random.random() < 0.02:
+        asteroids.append(Asteroid())
+
+    # Update and draw asteroids
+    for asteroid in asteroids[:]:
+        asteroid.move()
+        asteroid.draw()
+        if asteroid.rect.y > HEIGHT:
+            asteroids.remove(asteroid)
+            running = False
+
+    # Collision detection
+    for missile in missiles[:]:
+        for asteroid in asteroids[:]:
+            if missile.rect.colliderect(asteroid.rect):
+                explosions.append(Explosion(asteroid.rect.centerx, asteroid.rect.centery))
+                missiles.remove(missile)
+                asteroids.remove(asteroid)
+                score += 1
+                break
+
+    # Update and draw explosions
+    for explosion in explosions[:]:
+        explosion.update()
+        if explosion.timer <= 0:
+            explosions.remove(explosion)
+        explosion.draw()
+
+    # Draw aircraft
+    screen.blit(aircraft_image, aircraft_pos)
+
+    # Display score
+    font = pygame.font.Font(None, 36)
+    score_text = font.render(f"Score: {score}", True, WHITE)
+    screen.blit(score_text, (10, 10))
+
+    pygame.display.flip()
+    clock.tick(30)  # 30 FPS
+
+# End game
+pygame.quit()
+print(f"Game Over! Your score: {score}")
